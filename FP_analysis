@@ -1,0 +1,186 @@
+%%% Updated Fiber Photometry Script
+%%101822 Mala Ananth
+%% FOR 2-3 Channel Recordings on Multi-ROI system
+
+
+%% Import Data
+clear all
+
+temp = importdata("CC2592022-06-25T15_29_23.csv") %import data from path folder 
+FP.raw = temp.data;
+clear temp
+
+%% Remove Initialization Frame
+% Typically 0 in 3-channel recordings and 7 in 2-channel recordings
+
+ FP.init_frame_value = FP.raw(1,:) %can use for normalization later (value when LEDs are off)
+ FP.raw(1,:) = [];
+ 
+
+
+ %% Extracts information about the recording including # ROIs + # channels
+ % and removes any blank columns from inputs and stims
+ 
+ [~,FP.n_ROIs] = size(FP.raw);
+ FP.n_ROIs 
+ 
+if FP.n_ROIs > 4 
+    disp ('Removing input and stim columns from dataset...')
+    FP.raw(:,[4,5,6,7,8]) = []   
+end
+
+[~,FP.n_ROIs] = size(FP.raw);
+FP.n_ROIs = FP.n_ROIs - 3
+
+FP.n_channels = length(unique(FP.raw(:,3))); %extracts number of channels (ie 415, 470, 560)
+FP.channel_id = unique(FP.raw(:,3));
+FP.channel_id = sort(FP.channel_id,'descend'); %lowest value /should/ be 415
+
+%% Ensure equal number of frames for each channel
+
+while mod(length(FP.raw),FP.n_channels) ~= 0
+    FP.raw(end,:) = [];
+end
+
+%% Deinterleave and visualize data
+
+for i = 1:FP(1).n_ROIs
+    figure
+    for j = 1:FP(1).n_channels
+        FP(i).data(:,j) = FP(1).raw(FP(1).raw(:,3) == FP(1).channel_id(j),i+3);
+        subplot(FP(1).n_channels,1,j)
+        plot(FP(i).data(:,j))
+        hold on
+        title("ROI" + i + " , Channel " + FP(1).channel_id(j))
+    end
+end
+
+% define isosbestic channel 
+
+
+%% Correct for Photobleaching & Normalize
+%1) fit isosbestic or signal channel with biexponential decay 
+%2) linearly scale said fit to SIGNAL channlel using robust fit 
+%3) divide raw SIGNAL by linearly scaled fit to get normalized signal
+%4) visualize
+
+% FP(1).data = ROI 1 across two channels organized by the descent option..
+% i think? Signal then background
+
+%Part 1
+for i = 1:FP(1).n_ROIs
+    for j = FP(1).n_channels
+        temp_x = 1:length(FP(i).data); %best to use temporary x variable for fitting to avoid precision error in MATLAB
+        temp_x = temp_x'; %transpose
+
+        FP(i).fit = fit(temp_x,FP(i).data(:,j),'exp2'); %fit isosbestic with biexponential. If isosbestic is different channel. CHANGE
+        figure
+        plot(temp_x,FP(i).data(:,j)) %visualize
+        hold on
+        plot(temp_x,FP(i).fit(temp_x));
+        title("ROI" + i +": Exp2 fit to Baseline")
+
+% Part 2/3
+        FP(i).fit2 = robustfit(FP(i).fit(temp_x),FP(i).data(:,j)); %scale using robust fit
+        FP(i).lin_fit = FP(i).fit(temp_x)*FP(i).fit2(2)+FP(i).fit2(1); %linearize scaled fit
+        FP(i).norm_data = FP(i).data(:,j)./FP(i).lin_fit; %divide raw signal by linearly scaled fit
+
+% Part 3
+        figure %visualize signal X linear fit
+        plot(FP(i).data(:,j))
+        hold on
+        plot(FP(i).lin_fit,'LineWidth',2)
+        title("ROI" + i + "Channel" + j + ": Exp2 Linearly Scaled to Raw Data")
+
+        figure %visualize normalized signal
+        plot(FP(i).norm_data)
+        ylabel('dF/F*')
+        xlabel('Frame Number')
+        title("ROI" + i + " Channel" + j + ": Normalized Data")
+        
+    end 
+end 
+
+%% Choose normalization based on plots
+
+% Is data fit better to signal or isosbestic? Reapply that normalization
+FP = rmfield(FP, 'norm_data');
+% j = X << fill this in based on channel 1 or 2 
+% Then run 
+%
+% i = 1; j= 1 %% and so on and so forth
+% NORMALIZE DATA TO ITSELF
+i = 1; j= 2
+      temp_x = 1:length(FP(i).data); %best to use temporary x variable for fitting to avoid precision error in MATLAB
+     temp_x = temp_x'; %transpose
+
+      FP(i).fit = fit(temp_x,FP(i).data(:,j),'exp2'); %fit isosbestic with biexponential. If isosbestic is different channel. CHANGE
+     figure
+    plot(temp_x,FP(i).data(:,j)) %visualize
+   hold on
+  plot(temp_x,FP(i).fit(temp_x));
+ title("ROI" + i +": Exp2 fit to Baseline")
+
+
+    FP(i).fit2 = robustfit(FP(i).fit(temp_x),FP(i).data(:,j)); %scale using robust fit
+      FP(i).lin_fit = FP(i).fit(temp_x)*FP(i).fit2(2)+FP(i).fit2(1); %linearize scaled fit
+     FP(i).norm_data = FP(i).data(:,j)./FP(i).lin_fit; %divide raw signal by linearly scaled fit
+
+    i = 2; j= 1
+      temp_x = 1:length(FP(i).data); %best to use temporary x variable for fitting to avoid precision error in MATLAB
+     temp_x = temp_x'; %transpose
+
+      FP(i).fit = fit(temp_x,FP(i).data(:,j),'exp2'); %fit isosbestic with biexponential. If isosbestic is different channel. CHANGE
+     figure
+    plot(temp_x,FP(i).data(:,j)) %visualize
+   hold on
+  plot(temp_x,FP(i).fit(temp_x));
+ title("ROI" + i +": Exp2 fit to Baseline")
+
+
+    FP(i).fit2 = robustfit(FP(i).fit(temp_x),FP(i).data(:,j)); %scale using robust fit
+      FP(i).lin_fit = FP(i).fit(temp_x)*FP(i).fit2(2)+FP(i).fit2(1); %linearize scaled fit
+     FP(i).norm_data = FP(i).data(:,j)./FP(i).lin_fit; %divide raw signal by linearly scaled fit
+
+
+
+
+%
+%
+%
+
+%% Bin data into timeseries >> reduction by average rather than reduction by deletion, remove the seconds flag with the timetable series data and plot
+
+
+ROIData = cell(1:FP(1).n_ROIs);
+
+for i = 1:FP(1).n_ROIs
+    tt = timetable(FP(i).norm_data, 'SampleRate',20); %convert frame data to timetable
+    ttavg = retime(tt,'regular','mean','SampleRate',5);  %resample timetable data 1hz bins by average
+    
+    ROIData{i} = [seconds(ttavg.Time), ttavg.Var1];
+    
+    figure
+    plot(ROIData{i}(:,1),ROIData{i}(:,2))
+    ylabel('dF/F*')
+    xlabel('Time (sec) ')
+    title("ROI" + i + ": Normalized Data")
+end
+
+
+
+%% Compute and Plot Z-scored normalized data across ROIs
+
+Zscore = cell(1:FP(1).n_ROIs);
+
+for i = 1:FP(1).n_ROIs
+    Zscore{i} = zscore(ROIData{i}(:,2));
+    ROIData{i}(:,3) = Zscore{i}
+    
+    figure
+    plot(ROIData{i}(:,1),ROIData{i}(:,3))
+    ylabel('Z-Score dF/F*')
+    xlabel('Time (sec) ')
+    title("ROI" + i + " : Normalized Data")
+
+end  
